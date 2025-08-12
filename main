@@ -1,0 +1,67 @@
+import time
+import subprocess
+import speedtest
+import psutil
+import socket
+from displayhatmini import DisplayHATMini, BUTTON_PRESS
+from PIL import Image, ImageDraw, ImageFont
+
+# Инициализация экрана
+display = DisplayHATMini()
+display.set_backlight(1.0)
+
+# Шрифты
+font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 12)
+font_big = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
+
+def get_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except:
+        return "No IP"
+
+def get_ssh_status():
+    try:
+        # Проверяем активные SSH-сессии
+        output = subprocess.check_output("who", shell=True).decode()
+        if "pts/" in output:
+            return "SSH: Connected"
+        else:
+            return "SSH: None"
+    except:
+        return "SSH: Error"
+
+def get_speed():
+    try:
+        st = speedtest.Speedtest()
+        st.get_best_server()
+        download = st.download() / 1_000_000  # Мбит/с
+        upload = st.upload() / 1_000_000
+        ping = st.results.ping
+        return f"{ping:.0f}ms {download:.1f}↓ {upload:.1f}↑"
+    except:
+        return "Speed: Error"
+
+while True:
+    # Создаем картинку
+    image = Image.new("RGB", (display.WIDTH, display.HEIGHT), (0, 0, 0))
+    draw = ImageDraw.Draw(image)
+
+    # Получаем данные
+    ip = get_ip()
+    ssh_status = get_ssh_status()
+    speed = get_speed()
+
+    # Рисуем текст
+    draw.text((5, 5), f"IP: {ip}", font=font_small, fill=(255, 255, 0))
+    draw.text((5, 25), ssh_status, font=font_small, fill=(0, 255, 0) if "Connected" in ssh_status else (255, 0, 0))
+    draw.text((5, 45), speed, font=font_small, fill=(0, 200, 255))
+
+    # Отображаем
+    display.display(image)
+
+    time.sleep(3)
