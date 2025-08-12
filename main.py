@@ -1,64 +1,70 @@
 #!/usr/bin/env python3
-import time
 import socket
 import subprocess
-import re
+import time
+from PIL import Image, ImageDraw, ImageFont
 from displayhatmini import DisplayHATMini
 from speedtest import Speedtest
 
+# --- Функции получения данных ---
 def get_ip_address():
-    # простой способ получить LAN IP (Wi-Fi/eth)
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
-        return s.getsockname()[0]
-    except Exception:
-        return "N/A"
-    finally:
+        ip = s.getsockname()[0]
         s.close()
+        return ip
+    except:
+        return "N/A"
 
 def get_internet_speed():
     try:
         st = Speedtest()
         st.get_best_server()
         dl = st.download() / 1e6  # Mbps
-        ul = st.upload() / 1e6  # Mbps
+        ul = st.upload() / 1e6
         return dl, ul
-    except Exception as e:
+    except:
         return None, None
 
 def is_ssh_active():
-    # ищем active sshd-процессы (не включая собственный)
-    out = subprocess.check_output(["who"]).decode()
-    return any("pts/" in line for line in out.splitlines())
+    try:
+        out = subprocess.check_output(["who"]).decode()
+        return any("pts/" in line for line in out.splitlines())
+    except:
+        return False
 
-def main():
-    display = DisplayHATMini()
-    display.clear()
-    display.set_backlight(0.5)
+# --- Инициализация дисплея ---
+width = DisplayHATMini.WIDTH
+height = DisplayHATMini.HEIGHT
+buffer = Image.new("RGB", (width, height))
+draw = ImageDraw.Draw(buffer)
 
-    while True:
-        ip = get_ip_address()
-        dl_speed, ul_speed = get_internet_speed()
-        ssh_status = "SSH: ACTIVE" if is_ssh_active() else "SSH: idle"
+display = DisplayHATMini(buffer)
+display.set_led(0.1, 0.1, 0.1)  # слабая подсветка LED
+font = ImageFont.load_default()
 
-        display.clear()
-        lines = []
-        lines.append(f"IP: {ip}")
-        if dl_speed is not None:
-            lines.append(f"DL: {dl_speed:.1f} Mb/s")
-            lines.append(f"UL: {ul_speed:.1f} Mb/s")
-        else:
-            lines.append("Speed test failed")
-        lines.append(ssh_status)
+# --- Основной цикл ---
+while True:
+    # Получаем данные
+    ip = get_ip_address()
+    dl, ul = get_internet_speed()
+    ssh_status = "SSH: ACTIVE" if is_ssh_active() else "SSH: idle"
 
-        y = 0
-        for line in lines:
-            display.write_text(line, pos=(0, y))
-            y += 8  # отступ между строками
+    # Очищаем экран
+    draw.rectangle((0, 0, width, height), (0, 0, 0))
 
-        display.update()  # применяем изменения
-        time.sleep(60)
-        
-if __name__ == "__main__":
-    main()
+    # Выводим текст
+    draw.text((5, 5), f"IP: {ip}", font=font, fill=(255, 255, 255))
+    if dl is not None:
+        draw.text((5, 20), f"DL: {dl:.1f} Mb/s", font=font, fill=(0, 255, 0))
+        draw.text((5, 35), f"UL: {ul:.1f} Mb/s", font=font, fill=(0, 255, 255))
+    else:
+        draw.text((5, 20), "Speed test error", font=font, fill=(255, 0, 0))
+    draw.text((5, 50), ssh_status, font=font, fill=(255, 255, 0))
+
+    # Обновляем экран
+    display.display()
+
+    # Обновление каждую минуту
+    time.sleep(60)
